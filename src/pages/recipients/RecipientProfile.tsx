@@ -1,4 +1,5 @@
 import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   HeartPulse,
@@ -37,10 +38,54 @@ function urgencyClasses(
 export default function RecipientProfile() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const recipients = getRecipients();
+  const [recipient, setRecipient] = useState<Recipient | undefined>();
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState("");
 
-  const recipient = recipients.find((item) => item.id === id);
-  const hospital = recipient ? getHospitalForRecipient(recipient) : undefined;
+useEffect(() => {
+  let active = true;
+
+  async function loadRecipient() {
+    setLoading(true);
+    setError("");
+    setRecipient(undefined);
+
+    try {
+      const recipients = await getRecipients();
+      const found = recipients.find((item) => item.id === id);
+
+      if (active) {
+        setRecipient(found);
+      }
+    } catch {
+      if (active) {
+        setError("Failed to load recipient information.");
+      }
+    } finally {
+      if (active) {
+        setLoading(false);
+      }
+    }
+  }
+
+  void loadRecipient();
+
+  return () => {
+    active = false;
+  };
+}, [id]);
+
+const hospital = recipient
+  ? getHospitalForRecipient(recipient)
+  : undefined;
+
+if (loading) {
+  return <div className="p-6">Loading recipient...</div>;
+}
+
+if (error) {
+  return <div className="p-6 text-red-600">{error}</div>;
+}
 
   if (!recipient) {
     return (

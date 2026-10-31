@@ -1,11 +1,5 @@
-import { matchRuns } from "../data/datasets/matchRuns";
-import { hospitals, type Hospital } from "../data/datasets/hospitals";
-import { getDonors } from "./donorService";
-import { getOrgans } from "./organService";
-import {
-  getHospitalForRecipient,
-  getRecipients,
-} from "./recipientService";
+
+import { API_BASE_URL } from "../config/api";
 
 export interface ReportDistribution {
   label: string;
@@ -14,7 +8,11 @@ export interface ReportDistribution {
 }
 
 export interface HospitalReportRow {
-  hospital: Hospital;
+  hospital: {
+    id: string;
+    name: string;
+    city: string;
+  };
   donors: number;
   organs: number;
   recipients: number;
@@ -37,59 +35,207 @@ export interface ReportsData {
   hospitals: HospitalReportRow[];
 }
 
-function toDistribution(values: string[]): ReportDistribution[] {
-  const total = values.length;
+interface Donor {
+  donor_id: string;
+  sex: string;
+  blood_group: string;
+  hospital_id: string;
+}
+
+interface Recipient {
+  recipient_id: string;
+  blood_group: string;
+  required_organ: string;
+  urgency_category: string;
+  hospital_id: string;
+}
+
+interface Organ {
+  organ_id: string;
+  donor_id: string;
+  organ_type: string;
+  status: string;
+  current_hospital_id: string;
+}
+
+interface Hospital {
+  hospital_id: string;
+  hospital_name: string;
+  city: string;
+}
+
+interface MatchRun {
+  match_id: string;
+  medical_eligible: boolean;
+  blood_group_compatible: boolean;
+  crossmatch_compatible: boolean;
+  size_compatible: boolean;
+  recipient_active: boolean;
+  recipient_consent_verified: boolean;
+  hospital_authorized: boolean;
+  hospital_ready: boolean;
+}
+
+async function fetchData<T>(endpoint: string): Promise<T[]> {
+  const url = `${API_BASE_URL}/api/${endpoint}`;
+
+  let response: Response;
+
+  try {
+    response = await fetch(url);
+  } catch {
+    throw new Error(
+      `Cannot connect to ${url}. Check whether the backend is running.`
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch ${endpoint}: HTTP ${response.status}`
+    );
+  }
+
+  const data: unknown = await response.json();
+
+  if (!Array.isArray(data)) {
+    throw new Error(
+      `Unexpected response from ${endpoint}: expected an array`
+    );
+  }
+
+  return data as T[];
+}
+
+function toDistribution(
+  values: string[]
+): ReportDistribution[] {
   const counts = new Map<string, number>();
 
   values.forEach((value) => {
-    counts.set(value, (counts.get(value) ?? 0) + 1);
+    const label = value || "Unknown";
+
+    counts.set(
+      label,
+      (counts.get(label) || 0) + 1
+    );
   });
 
-  return [...counts.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
+  return Array.from(counts.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
     .map(([label, count]) => ({
       label,
       count,
-      percentage: total === 0 ? 0 : Math.round((count / total) * 100),
+      percentage:
+        values.length === 0
+          ? 0
+          : Math.round((count / values.length) * 100),
     }));
 }
 
-/** Builds deterministic reports from the current in-memory service data. */
-export function getReportsData(): ReportsData {
-  const donors = getDonors();
-  const recipients = getRecipients();
-  const organs = getOrgans();
+function getMatchStatus(match: MatchRun): string {
+  const eligible =
+    match.medical_eligible === true &&
+    match.blood_group_compatible === true &&
+    match.crossmatch_compatible === true &&
+    match.size_compatible === true &&
+    match.recipient_active === true &&
+    match.recipient_consent_verified === true &&
+    match.hospital_authorized === true &&
+    match.hospital_ready === true;
+
+  return eligible ? "Eligible" : "Not eligible";
+}
+
+export async function getReportsData(): Promise<ReportsData> {
+  const [
+    donors,
+    recipients,
+    organs,
+    hospitals,
+    matchRuns,
+  ] = await Promise.all([
+    fetchData<Donor>("donors"),
+    fetchData<Recipient>("recipients"),
+    fetchData<Organ>("organs"),
+    fetchData<Hospital>("hospitals"),
+    fetchData<MatchRun>("match-runs"),
+  ]);
+
+  const donorBloodGroups = new Map(
+    donors.map((donor) => [
+      donor.donor_id,
+      donor.blood_group,
+    ])
+  );
 
   return {
     donorTotal: donors.length,
-    donorByGender: toDistribution(donors.map((donor) => donor.gender)),
-    donorByBloodGroup: toDistribution(donors.map((donor) => donor.bloodGroup)),
+
+    donorByGender: toDistribution(
+      donors.map((donor) => donor.sex)
+    ),
+
+    donorByBloodGroup: toDistribution(
+      donors.map((donor) => donor.blood_group)
+    ),
+
     recipientTotal: recipients.length,
+
     recipientByBloodGroup: toDistribution(
-      recipients.map((recipient) => recipient.bloodGroup)
+      recipients.map((recipient) => recipient.blood_group)
     ),
+
     recipientByRequiredOrgan: toDistribution(
-      recipients.map((recipient) => recipient.requiredOrgan)
+      recipients.map((recipient) => recipient.required_organ)
     ),
+
     recipientByUrgency: toDistribution(
-      recipients.map((recipient) => recipient.urgency)
+      recipients.map((recipient) => recipient.urgency_category)
     ),
+
     organTotal: organs.length,
-    organByType: toDistribution(organs.map((organ) => organ.organType)),
+
+    organByType: toDistribution(
+      organs.map((organ) => organ.organ_type)
+    ),
+
     organByBloodGroup: toDistribution(
-      organs.map((organ) => organ.bloodGroup)
+      organs.map(
+        (organ) =>
+          donorBloodGroups.get(organ.donor_id) || "Unknown"
+      )
     ),
+
     organByAvailability: toDistribution(
-      organs.map((organ) => organ.availabilityStatus)
+      organs.map((organ) => organ.status)
     ),
+
     matchRunTotal: matchRuns.length,
-    matchRunsByStatus: toDistribution(matchRuns.map((matchRun) => matchRun.status)),
+
+    matchRunsByStatus: toDistribution(
+      matchRuns.map(getMatchStatus)
+    ),
+
     hospitals: hospitals.map((hospital) => ({
-      hospital,
-      donors: donors.filter((donor) => donor.hospitalId === hospital.id).length,
-      organs: organs.filter((organ) => organ.hospitalId === hospital.id).length,
+      hospital: {
+        id: hospital.hospital_id,
+        name: hospital.hospital_name,
+        city: hospital.city,
+      },
+
+      donors: donors.filter(
+        (donor) =>
+          donor.hospital_id === hospital.hospital_id
+      ).length,
+
+      organs: organs.filter(
+        (organ) =>
+          organ.current_hospital_id === hospital.hospital_id
+      ).length,
+
       recipients: recipients.filter(
-        (recipient) => getHospitalForRecipient(recipient)?.id === hospital.id
+        (recipient) =>
+          recipient.hospital_id === hospital.hospital_id
       ).length,
     })),
   };

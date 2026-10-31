@@ -1,112 +1,238 @@
-import { Bell, HeartPulse, PackageCheck, Stethoscope } from "lucide-react";
-import Badge from "../components/common/Badge";
+
+import { useEffect, useState } from "react";
+import { Bell, RefreshCw } from "lucide-react";
 import Card from "../components/common/Card";
 import PageHeader from "../components/common/PageHeader";
-import { getNotifications } from "../services/notificationService";
-import type { Notification, NotificationCategory } from "../types/notification";
 
-const categoryLabels: Record<NotificationCategory, string> = {
-  organ: "Organ inventory",
-  recipient: "Recipient attention",
-  matching: "Matching",
-  system: "System",
+type HospitalOffer = {
+  notification_id: string;
+  organ_id: string;
+  recipient_id: string;
+  hospital_id: string;
+  rank: number;
+  status: string;
+  sent_at: string;
+  expires_at: string | null;
+  responded_at: string | null;
 };
 
-const categoryBadgeTypes: Record<
-  NotificationCategory,
-  "success" | "warning" | "danger" | "info" | "neutral"
-> = {
-  organ: "success",
-  recipient: "warning",
-  matching: "info",
-  system: "neutral",
+type HospitalResponse = {
+  success: boolean;
+  hospital_id: string;
+  hospital_name: string;
+  offers: HospitalOffer[];
 };
 
-function NotificationIcon({ category }: { category: NotificationCategory }) {
-  const className = "h-5 w-5";
+type DisplayOffer = HospitalOffer & {
+  hospital_name: string;
+};
 
-  switch (category) {
-    case "organ":
-      return <PackageCheck className={className} aria-hidden="true" />;
-    case "recipient":
-      return <HeartPulse className={className} aria-hidden="true" />;
-    case "matching":
-      return <Stethoscope className={className} aria-hidden="true" />;
-    case "system":
-      return <Bell className={className} aria-hidden="true" />;
-  }
-}
+const hospitalIds = ["H0001", "H0002", "H0003", "H0004", "H0005"];
 
-function formatNotificationDate(date?: string): string {
-  if (!date) {
-    return "No event date available";
-  }
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
-  const parsedDate = new Date(date);
+function formatDate(date: string | null) {
+  if (!date) return "—";
 
-  if (Number.isNaN(parsedDate.getTime())) {
-    return date;
-  }
+  const parsed = new Date(date);
 
-  return new Intl.DateTimeFormat("en-IN", {
-    dateStyle: "medium",
-    timeStyle: date.includes("T") ? "short" : undefined,
-  }).format(parsedDate);
+  return Number.isNaN(parsed.getTime())
+    ? date
+    : parsed.toLocaleString("en-IN");
 }
 
 export default function Notifications() {
-  const notifications = getNotifications();
+  const [offers, setOffers] = useState<DisplayOffer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadNotifications() {
+      try {
+        const results = await Promise.all(
+          hospitalIds.map(async (hospitalId) => {
+            const response = await fetch(
+              `${API_BASE}/api/ml/notifications/hospital/${hospitalId}`
+            );
+
+            if (!response.ok) {
+              throw new Error(
+                `Failed to load hospital ${hospitalId}: ${response.status}`
+              );
+            }
+
+            const data: HospitalResponse = await response.json();
+
+            return data.offers.map((offer) => ({
+              ...offer,
+              hospital_name: data.hospital_name,
+            }));
+          })
+        );
+
+        if (!active) return;
+
+        const allOffers = results
+          .flat()
+          .sort(
+            (a, b) =>
+              new Date(b.sent_at).getTime() -
+              new Date(a.sent_at).getTime()
+          );
+
+        setOffers(allOffers);
+        setError("");
+      } catch (err) {
+        if (!active) return;
+
+        setError(
+          err instanceof Error ? err.message : "Failed to fetch notifications"
+        );
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void loadNotifications();
+
+    const interval = window.setInterval(() => {
+      void loadNotifications();
+    }, 5000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const activeOffers = offers.filter(
+    (offer) =>
+      offer.status.toLowerCase() === "sent" &&
+      !!offer.expires_at &&
+      new Date(offer.expires_at).getTime() > Date.now()
+  ).length;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Notifications"
-        description="Current dataset-derived coordination alerts. Read acknowledgement is not stored in this prototype."
+        description="Live hospital organ offers retrieved from FastAPI."
       />
 
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card className="p-5">
+          <p className="text-sm text-slate-500">Total Offers</p>
+          <p className="mt-2 text-3xl font-bold">{offers.length}</p>
+        </Card>
+
+        <Card className="p-5">
+          <p className="text-sm text-slate-500">Active Offers</p>
+          <p className="mt-2 text-3xl font-bold text-emerald-600">
+            {activeOffers}
+          </p>
+        </Card>
+
+        <Card className="p-5">
+          <p className="text-sm text-slate-500">Expired Offers</p>
+          <p className="mt-2 text-3xl font-bold text-amber-600">
+            {
+              offers.filter(
+                (offer) => offer.status.toLowerCase() === "expired"
+              ).length
+            }
+          </p>
+        </Card>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+          {error}
+        </div>
+      )}
+
       <Card className="overflow-hidden">
-        {notifications.length === 0 ? (
-          <div className="flex min-h-56 flex-col items-center justify-center px-6 py-12 text-center">
-            <div className="rounded-2xl bg-emerald-50 p-4 text-emerald-600">
-              <Bell className="h-7 w-7" aria-hidden="true" />
-            </div>
-            <h2 className="mt-4 text-lg font-bold text-slate-900">No current notifications</h2>
-            <p className="mt-1 max-w-md text-sm text-slate-500">
-              There are no dataset-derived organ, recipient, or persisted matching alerts to show.
+        {loading ? (
+          <div className="flex items-center justify-center gap-3 p-12">
+            <RefreshCw className="h-5 w-5 animate-spin" />
+            Loading notifications...
+          </div>
+        ) : offers.length === 0 ? (
+          <div className="flex flex-col items-center p-12 text-center">
+            <Bell className="mb-3 h-8 w-8 text-slate-400" />
+            <h2 className="font-semibold">No hospital offers found</h2>
+            <p className="text-sm text-slate-500">
+              Notifications will appear when organ offers are created.
             </p>
           </div>
         ) : (
-          <ul className="divide-y divide-emerald-100" aria-label="Current notifications">
-            {notifications.map((notification) => (
-              <NotificationRow key={notification.id} notification={notification} />
-            ))}
-          </ul>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[850px] text-left text-sm">
+              <thead className="bg-emerald-50 text-slate-600">
+                <tr>
+                  <th className="px-5 py-4">Hospital</th>
+                  <th className="px-5 py-4">Organ ID</th>
+                  <th className="px-5 py-4">Recipient</th>
+                  <th className="px-5 py-4">Rank</th>
+                  <th className="px-5 py-4">Status</th>
+                  <th className="px-5 py-4">Sent At</th>
+                  <th className="px-5 py-4">Expires At</th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-100">
+                {offers.map((offer) => (
+                  <tr
+                    key={offer.notification_id}
+                    className="hover:bg-emerald-50/40"
+                  >
+                    <td className="px-5 py-4">
+                      <p className="font-semibold">
+                        {offer.hospital_name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {offer.hospital_id}
+                      </p>
+                    </td>
+
+                    <td className="px-5 py-4">{offer.organ_id}</td>
+
+                    <td className="px-5 py-4">{offer.recipient_id}</td>
+
+                    <td className="px-5 py-4">{offer.rank}</td>
+
+                    <td className="px-5 py-4">
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                          offer.status.toLowerCase() === "sent"
+                            ? "bg-blue-100 text-blue-700"
+                            : offer.status.toLowerCase() === "expired"
+                            ? "bg-amber-100 text-amber-700"
+                            : offer.status.toLowerCase() === "accepted"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {offer.status}
+                      </span>
+                    </td>
+
+                    <td className="px-5 py-4">
+                      {formatDate(offer.sent_at)}
+                    </td>
+
+                    <td className="px-5 py-4">
+                      {formatDate(offer.expires_at)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
     </div>
-  );
-}
-
-function NotificationRow({ notification }: { notification: Notification }) {
-  return (
-    <li className="flex gap-4 px-5 py-5 sm:px-6">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
-        <NotificationIcon category={notification.category} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="font-semibold text-slate-900">{notification.title}</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-600">{notification.description}</p>
-          </div>
-          <Badge type={categoryBadgeTypes[notification.category]}>
-            {categoryLabels[notification.category]}
-          </Badge>
-        </div>
-        <p className="mt-3 text-xs font-medium text-slate-500">
-          {formatNotificationDate(notification.date)}
-        </p>
-      </div>
-    </li>
   );
 }
