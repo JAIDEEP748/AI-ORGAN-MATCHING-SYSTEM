@@ -142,6 +142,7 @@ class MatchRun(Base):
 # NOTIFICATIONS
 # ==========================================================
 
+
 class Notification(Base):
     __tablename__ = "notifications"
 
@@ -162,9 +163,12 @@ class Notification(Base):
     status = Column(String)
 
     sent_at = Column(String)
+    expires_at = Column(String)
+    expired_at = Column(String)
     responded_at = Column(String)
 
     response = Column(String)
+
 
 
 # ==========================================================
