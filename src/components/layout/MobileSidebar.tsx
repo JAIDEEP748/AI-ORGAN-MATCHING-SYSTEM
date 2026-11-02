@@ -9,9 +9,11 @@ import {
   Bell,
   ClipboardList,
   Settings,
+  LogOut,
 } from "lucide-react";
 
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
 interface MobileSidebarProps {
   open: boolean;
@@ -70,6 +72,15 @@ export default function MobileSidebar({
   open,
   onClose,
 }: MobileSidebarProps) {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    onClose();
+    navigate("/login");
+  };
+
   if (!open) {
     return null;
   }
@@ -94,7 +105,7 @@ export default function MobileSidebar({
             </div>
 
             <div>
-              <h2 className="font-bold text-slate-900 dark:text-white">
+              <h2 className="font-bold text-slate-900">
                 OrganMatch
               </h2>
 
@@ -141,15 +152,16 @@ export default function MobileSidebar({
           </div>
         </nav>
 
-        {/* Footer */}
-        <div className="absolute bottom-5 left-4 right-4 rounded-xl border border-emerald-100 bg-emerald-50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-
-            <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-              Prototype mode
-            </span>
-          </div>
+        {/* Footer with Log Out */}
+        <div className="p-4 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-100 transition"
+          >
+            <LogOut size={16} />
+            Log Out
+          </button>
         </div>
       </aside>
     </div>

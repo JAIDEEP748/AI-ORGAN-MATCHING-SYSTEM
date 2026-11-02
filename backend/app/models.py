@@ -49,6 +49,8 @@ class Organ(Base):
     organ_condition_category = Column(String)
     status = Column(String)
     current_hospital_id = Column(String)
+    expiry_datetime = Column(String, nullable=True)
+    max_preservation_hours = Column(Float, nullable=True)
 
 
 class Hospital(Base):
@@ -212,3 +214,23 @@ class ClinicalReview(Base):
     review_date = Column(String)
     decision = Column(String)
     remarks = Column(String)
+
+
+# ==========================================================
+# AUTHENTICATION & USERS
+# ==========================================================
+
+class User(Base):
+    __tablename__ = "users"
+
+    user_id = Column(String, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    salt = Column(String, nullable=False)
+    role = Column(String, nullable=False)  # "donor_hospital", "recipient_hospital", "admin"
+    hospital_id = Column(String, nullable=True)
+    hospital_name = Column(String, nullable=True)
+    full_name = Column(String, nullable=False)
+    designation = Column(String, nullable=True)
+    created_at = Column(String, nullable=True)

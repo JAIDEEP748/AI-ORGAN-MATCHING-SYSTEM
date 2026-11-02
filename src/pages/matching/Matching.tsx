@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Brain,
   ChevronDown,
@@ -11,6 +11,9 @@ import {
   Clock,
   AlertCircle,
   CheckCircle2,
+  ArrowRight,
+  Hospital,
+  Building2,
 } from "lucide-react";
 
 import Button from "../../components/common/Button";
@@ -30,6 +33,13 @@ interface BackendOrgan {
   organ_condition_category: string;
   status: string;
   current_hospital_id: string;
+}
+
+interface HospitalLocation {
+  hospital_id: string;
+  hospital_name: string;
+  city: string;
+  state?: string;
 }
 
 interface RecipientInfo {
@@ -56,6 +66,10 @@ interface RankedCandidate {
   urgency_score: number;
   waiting_time_score: number;
   distance_km: number;
+  estimated_travel_minutes?: number;
+  estimated_travel_formatted?: string;
+  donor_hospital?: HospitalLocation;
+  recipient_hospital?: HospitalLocation;
   hospital_readiness_score: number;
 
   predicted_priority_score: number;
@@ -79,9 +93,11 @@ interface RankingResponse {
 
 export default function Matching() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const paramOrganId = searchParams.get("organId") || "";
 
   const [organs, setOrgans] = useState<BackendOrgan[]>([]);
-  const [selectedOrganId, setSelectedOrganId] = useState("");
+  const [selectedOrganId, setSelectedOrganId] = useState(paramOrganId);
   const [ranking, setRanking] = useState<RankingResponse | null>(null);
 
   const [isLoadingOrgans, setIsLoadingOrgans] = useState(true);
@@ -112,6 +128,9 @@ export default function Matching() {
         );
 
         setOrgans(availableOrgans);
+        if (paramOrganId && availableOrgans.some((o) => o.organ_id === paramOrganId)) {
+          setSelectedOrganId(paramOrganId);
+        }
       } catch (err) {
         console.error(err);
 
@@ -124,7 +143,7 @@ export default function Matching() {
     }
 
     loadOrgans();
-  }, []);
+  }, [paramOrganId]);
 
   /* ------------------------------------------------------------------------ */
   /* Run AI ranking                                                            */
@@ -550,6 +569,58 @@ export default function Matching() {
 
                           <p className="text-sm font-medium text-green-700">
                             Eligible
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Donor Hospital to Recipient Hospital Route & Distance */}
+                    <div className="rounded-xl border border-emerald-100 bg-gradient-to-r from-emerald-50/70 via-slate-50 to-blue-50/70 p-4 shadow-2xs">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        {/* Donor Hospital */}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+                            <Hospital className="h-3.5 w-3.5 text-emerald-600" />
+                            <span>Donor Hospital (Procurement)</span>
+                          </div>
+                          <p className="mt-1 font-bold text-slate-900 text-sm">
+                            {candidate.donor_hospital?.hospital_name || "Donor Hospital"}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {candidate.donor_hospital?.city || "Chennai"}
+                            {candidate.donor_hospital?.state ? `, ${candidate.donor_hospital.state}` : ""}
+                          </p>
+                        </div>
+
+                        {/* Route Distance Indicator */}
+                        <div className="flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-xs min-w-[200px]">
+                          <span className="text-sm font-extrabold text-emerald-700 flex items-center gap-1">
+                            <MapPin size={14} className="text-emerald-600" />
+                            {candidate.distance_km.toFixed(1)} km
+                          </span>
+                          <div className="my-1.5 flex items-center gap-1 w-full justify-center">
+                            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            <div className="h-0.5 flex-1 bg-gradient-to-r from-emerald-400 to-blue-500" />
+                            <ArrowRight size={13} className="text-blue-600 shrink-0" />
+                          </div>
+                          <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
+                            <Clock size={11} className="text-slate-400" />
+                            Est. Travel: {candidate.estimated_travel_formatted || `${Math.round(candidate.distance_km)} mins`}
+                          </span>
+                        </div>
+
+                        {/* Recipient Hospital */}
+                        <div className="flex-1 sm:text-right">
+                          <div className="flex items-center gap-1.5 sm:justify-end text-[11px] font-bold uppercase tracking-wider text-blue-800">
+                            <Building2 className="h-3.5 w-3.5 text-blue-600" />
+                            <span>Recipient Hospital (Transplant)</span>
+                          </div>
+                          <p className="mt-1 font-bold text-slate-900 text-sm">
+                            {candidate.recipient_hospital?.hospital_name || "Recipient Hospital"}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {candidate.recipient_hospital?.city || "Recipient City"}
+                            {candidate.recipient_hospital?.state ? `, ${candidate.recipient_hospital.state}` : ""}
                           </p>
                         </div>
                       </div>

@@ -100,6 +100,19 @@ def get_ranked_candidates(db: Session, organ_id: str):
     if not eligible_runs:
         return []
 
+    organ = db.query(models.Organ).filter(models.Organ.organ_id == organ_id).first()
+    donor = db.query(models.Donor).filter(models.Donor.donor_id == organ.donor_id).first() if organ else None
+
+    donor_hosp_id = (
+        organ.current_hospital_id
+        if (organ and organ.current_hospital_id)
+        else (donor.hospital_id if donor else None)
+    )
+    donor_hospital = (
+        db.query(models.Hospital).filter(models.Hospital.hospital_id == donor_hosp_id).first()
+        if donor_hosp_id else None
+    )
+
     feature_rows = [
         [
             run.urgency_score,
@@ -122,7 +135,24 @@ def get_ranked_candidates(db: Session, organ_id: str):
             models.Recipient.recipient_id == run.recipient_id
         ).first()
 
+        recip_hospital = (
+            db.query(models.Hospital).filter(models.Hospital.hospital_id == recipient.hospital_id).first()
+            if (recipient and recipient.hospital_id) else None
+        )
+
         candidate_shap = shap_values[index]
+
+        # Calculate accurate distance and travel times
+        dist_km = round(float(run.distance_km), 1) if run.distance_km is not None else 0.0
+        if dist_km <= 80:
+            travel_mins = max(5, int(round(dist_km / 50.0 * 60)))
+        else:
+            travel_mins = max(15, int(round(40 + (dist_km / 450.0 * 60))))
+
+        if travel_mins >= 60:
+            travel_formatted = f"{travel_mins // 60}h {travel_mins % 60}m"
+        else:
+            travel_formatted = f"{travel_mins}m"
 
         candidates.append({
             "match_id": run.match_id,
@@ -131,10 +161,24 @@ def get_ranked_candidates(db: Session, organ_id: str):
             "organ_type": run.organ_type,
             "urgency_score": run.urgency_score,
             "waiting_time_score": run.waiting_time_score,
-            "distance_km": run.distance_km,
+            "distance_km": dist_km,
+            "estimated_travel_minutes": travel_mins,
+            "estimated_travel_formatted": travel_formatted,
             "hospital_readiness_score":
                 run.hospital_readiness_score,
             "predicted_priority_score": float(prediction),
+            "donor_hospital": {
+                "hospital_id": donor_hospital.hospital_id if donor_hospital else (donor_hosp_id or ""),
+                "hospital_name": donor_hospital.hospital_name if donor_hospital else "Donor Hospital",
+                "city": donor_hospital.city if donor_hospital else "Chennai",
+                "state": donor_hospital.state if donor_hospital else ""
+            },
+            "recipient_hospital": {
+                "hospital_id": recip_hospital.hospital_id if recip_hospital else (recipient.hospital_id if recipient else ""),
+                "hospital_name": recip_hospital.hospital_name if recip_hospital else "Recipient Hospital",
+                "city": recip_hospital.city if recip_hospital else "Recipient City",
+                "state": recip_hospital.state if recip_hospital else ""
+            },
             "shap_explanation": {
                 "urgency_score": float(candidate_shap[0]),
                 "waiting_time_score": float(candidate_shap[1]),
@@ -148,7 +192,9 @@ def get_ranked_candidates(db: Session, organ_id: str):
                 "blood_group":
                     recipient.blood_group if recipient else None,
                 "urgency_category":
-                    recipient.urgency_category if recipient else None
+                    recipient.urgency_category if recipient else None,
+                "hospital_id":
+                    recipient.hospital_id if recipient else None
             }
         })
 
@@ -632,13 +678,22 @@ def rank_recipients(
             detail="Organ not found"
         )
 
+    if organ.status == "Expired":
+        return {
+            "organ_id": organ_id,
+            "organ_type": organ.organ_type,
+            "status": "Expired",
+            "candidates": [],
+            "message": "This organ has exceeded its maximum preservation window (Cold Ischemia Time) and has expired. It has been auto-removed from matching."
+        }
+
     if organ.status != "Available":
         return {
             "organ_id": organ_id,
             "organ_type": organ.organ_type,
             "status": organ.status,
             "candidates": [],
-            "message": "Organ is not currently available"
+            "message": f"Organ status is '{organ.status}'. Only Available organs can be matched."
         }
 
     match_runs = db.query(models.MatchRun).filter(

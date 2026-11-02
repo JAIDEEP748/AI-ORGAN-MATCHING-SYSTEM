@@ -12,10 +12,12 @@ import {
   Stethoscope,
   ChevronLeft,
   ChevronRight,
+  LogOut,
 } from "lucide-react";
 
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { useAuth } from "../../context/AuthContext";
 
 const navigation = [
   {
@@ -73,6 +75,13 @@ const navigation = [
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
 
   return (
     <aside
@@ -196,27 +205,24 @@ export default function Sidebar() {
             </>
           )}
         </NavLink>
+
+        {/* Log Out */}
+        <button
+          type="button"
+          onClick={handleLogout}
+          title={collapsed ? "Log Out" : undefined}
+          className={`group mt-1 flex w-full items-center rounded-xl px-3 py-3 text-sm font-medium text-slate-600 transition-all hover:bg-red-50 hover:text-red-700 ${
+            collapsed ? "justify-center" : "gap-3"
+          }`}
+        >
+          <LogOut
+            size={19}
+            className="text-slate-400 group-hover:text-red-600"
+          />
+
+          {!collapsed && <span>Log Out</span>}
+        </button>
       </nav>
-
-      {/* Prototype environment notice */}
-      {!collapsed && (
-        <div className="mx-3 mb-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-            </span>
-
-            <span className="text-xs font-semibold text-emerald-700">
-              Prototype mode
-            </span>
-          </div>
-
-          <p className="mt-1 text-[10px] text-emerald-600/70">
-            In-memory datasets and services
-          </p>
-        </div>
-      )}
 
       {/* Collapse button */}
       <div className="border-t border-slate-200 p-3">

@@ -26,69 +26,23 @@ export function ThemeProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    const savedTheme =
-      localStorage.getItem("organ-match-theme");
-
-    if (
-      savedTheme === "light" ||
-      savedTheme === "dark" ||
-      savedTheme === "system"
-    ) {
-      return savedTheme;
-    }
-
-    return "system";
-  });
-
-  const [resolvedTheme, setResolvedTheme] =
-    useState<"light" | "dark">("light");
+  const [theme, setThemeState] = useState<Theme>("light");
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia(
-      "(prefers-color-scheme: dark)"
-    );
-
-    const applyTheme = () => {
-      const systemTheme = mediaQuery.matches
-        ? "dark"
-        : "light";
-
-      const finalTheme =
-        theme === "system"
-          ? systemTheme
-          : theme;
-
-      document.documentElement.classList.toggle(
-        "dark",
-        finalTheme === "dark"
-      );
-
-      setResolvedTheme(finalTheme);
-    };
-
-    applyTheme();
-
-    mediaQuery.addEventListener(
-      "change",
-      applyTheme
-    );
-
-    return () => {
-      mediaQuery.removeEventListener(
-        "change",
-        applyTheme
-      );
-    };
-  }, [theme]);
+    // Ensure clean light hospital theme without dark class conflict
+    document.documentElement.classList.remove("dark");
+    localStorage.setItem("organ-match-theme", "light");
+    setThemeState("light");
+    setResolvedTheme("light");
+  }, []);
 
   const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme);
-
-    localStorage.setItem(
-      "organ-match-theme",
-      newTheme
-    );
+    // Maintained as light theme
+    setThemeState("light");
+    setResolvedTheme("light");
+    document.documentElement.classList.remove("dark");
+    localStorage.setItem("organ-match-theme", "light");
   };
 
   return (
